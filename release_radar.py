@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import getpass
+import logging
 import os
 import sys
 import spotipy
@@ -37,11 +38,9 @@ class Artist:
         i = 0
 
         while i < totalAlbums or totalAlbums < 0:
-            if debugging:
-                print("Requesting page of albums of artist \"" + self.name + "\"...")
+            logging.debug("Requesting page of albums of artist \"" + self.name + "\"...")
             results = spotify.artist_albums(artist_id=self.id, limit = MAX_ITEMS, offset=offset)
-            if debugging:
-                print("Received page of albums.")
+            logging.debug("Received page of albums.")
 
             offset = offset + len(results["items"])
             assert results["limit"] == MAX_ITEMS
@@ -78,11 +77,9 @@ class Artist:
         i = 0
 
         while i < totalAlbums:
-            if debugging:
-                print("Requesting page of complete albums of artist \"" + self.name + "\"...")
+            logging.debug("Requesting page of complete albums of artist \"" + self.name + "\"...")
             results = spotify.albums(completeAlbumIdList[offset:(offset+MAX_SET_ITEMS)])
-            if debugging:
-                print("Received page of complete albums.")
+            logging.debug("Received page of complete albums.")
             offset += MAX_SET_ITEMS
 
             for item in results["albums"]:
@@ -116,16 +113,13 @@ class Album:
         self.tracks = None
         self.type = None
 
-        #print(release_date_precision)
-        #print(release_date)
         if release_date_precision == "day":
             self.release_date = datetime.datetime.strptime(release_date, "%Y-%m-%d")
         elif release_date_precision == "year":
             self.release_date = datetime.datetime.strptime(release_date, "%Y")
         else:
-            print("ERROR: Could not parse release date because of unknown precision.")
-            print("Date: " + release_date)
-            print("Prec: " + release_date_precision)
+            logging.error("Could not parse release date because of unknown precision.\nDate: "
+                    + release_date + "\nPrec: " + release_date_precision)
             exit(1)
 
     def is_collection(self):
@@ -143,11 +137,9 @@ class Album:
 
         res = []
 
-        if debugging:
-            print("Requesting first page of tracks of album \"" + self.name + "\"...")
+        logging.debug("Requesting first page of tracks of album \"" + self.name + "\"...")
         resultPart = spotifyAccess.album_tracks(self.id, limit=MAX_ITEMS, offset=0)
-        if debugging:
-            print("Received first page of tracks.")
+        logging.debug("Received first page of tracks.")
         while resultPart:
             for tr in resultPart["items"]:
                 artists = []
@@ -155,11 +147,9 @@ class Album:
                     artists.append(Artist(art["id"], art["name"]))
                 res.append(Track(tr["id"], tr["name"], self, artists))
             if resultPart["next"]:
-                if debugging:
-                    print("Requesting next page of tracks.")
+                logging.debug("Requesting next page of tracks.")
                 resultPart = spotifyAccess.next(resultPart)
-                if debugging:
-                    print("Received next page of tracks.")
+                logging.debug("Received next page of tracks.")
             else:
                 resultPart = None
 
@@ -215,11 +205,9 @@ class Playlist:
     def create_playlist(spotifyAccess, name, user_id=None):
         if user_id == None:
             # Get current user:
-            if debugging:
-                print("Requesting current user...")
+            logging.debug("Requesting current user...")
             user_id = spotifyAccess.current_user()["id"]
-            if debugging:
-                print("Received current user.")
+            logging.debug("Received current user.")
 
         response = spotifyAccess.user_playlist_create(user_id, name, public=False)
         return Playlist(response["id"], name, [])
@@ -280,11 +268,9 @@ def get_followed_artists(spotifyAccess):
     res = []
 
     while i < totalFollowed or totalFollowed < 0:
-        if debugging:
-            print("Requesting page of followed artists...")
+        logging.debug("Requesting page of followed artists...")
         results = spotifyAccess.current_user_followed_artists(limit = MAX_ITEMS, after=lastId)
-        if debugging:
-            print("Received page of followed artists.")
+        logging.debug("Received page of followed artists.")
 
         lastId = results["artists"]["cursors"]["after"]
         assert lastId == results["artists"]["items"][-1]["id"] or (len(results["artists"]["items"]) < MAX_ITEMS and lastId == None)
@@ -324,8 +310,6 @@ def get_new_tracks(spotifyAccessPublic, spotifyAccessPrivate, period):
                     foundTrackNames.append(track.name)
 
                     if is_current(album) and not track.album.is_collection() and track.is_done_by_artist(artist.id):
-                        #print(artist.name + " - " + track.album.name + " (" + track.album.release_date.strftime("%Y-%m-%d") + "): " + track.name)
-                        #print(artist.id + " - " + track.album.id + ": " + track.id)
                         res.append((artist, track))
     return res
 
@@ -341,31 +325,25 @@ def update_release_radar(clientId, clientSecret, period):
     def get_track_id(track):
         return track.id
 
-    print("Updating playlist Release Radar...")
+    logging.info("Updating playlist Release Radar...")
 
-    if debugging:
-        print("Connecting to Spotify...")
+    logging.debug("Connecting to Spotify...")
     accessScopes = ["user-follow-read", "playlist-modify-private", "playlist-read-private"]
     redirectUri = "http://127.0.0.1:9090"
     spotifyAccessPrivate = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=clientId, client_secret=clientSecret, redirect_uri=redirectUri, scope=accessScopes))
     spotifyAccessPublic = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=clientId, client_secret=clientSecret))
-    if debugging:
-        print("Connected to Spotify.")
+    logging.info("Connected to Spotify.")
     
     # Get current user:
-    if debugging:
-        print("Requesting current user...")
+    logging.debug("Requesting current user...")
     currentUserId = spotifyAccessPrivate.current_user()["id"]
-    if debugging:
-        print("Received current user.")
+    logging.debug("Received current user.")
 
     # Make sure the playlist "Release Radar" exists and get current content:
     releaseRadarPLId = None
-    if debugging:
-        print("Requesting first page of user playlists...")
+    logging.debug("Requesting first page of user playlists...")
     resultPart = spotifyAccessPrivate.user_playlists(currentUserId)
-    if debugging:
-        print("Received first page of user playlists.")
+    logging.debug("Received first page of user playlists.")
     while resultPart:
         for playlist in resultPart['items']:
             if playlist["name"] == "Release Radar":
@@ -373,25 +351,25 @@ def update_release_radar(clientId, clientSecret, period):
                 resultPart = None
                 break
         if resultPart != None and resultPart['next']:
-            if debugging:
-                print("Requesting next page of user playlists...")
+            logging.debug("Requesting next page of user playlists...")
             resultPart = spotifyAccessPrivate.next(resultPart)
-            if debugging:
-                print("Received next page of user playlists.")
+            logging.debug("Received next page of user playlists.")
         else:
             resultPart = None
 
     if not releaseRadarPLId:
-        if debugging:
-            print("Creating new playlists...")
-        creationResult = spotifyAccessPrivate.user_playlist_create(currentUserId, "Release Radar", public=False, collaborative=False, description="Automatically generated list of new releases of followed artists.")
-        if debugging:
-            print("Created new playlists.")
+        logging.debug("Creating new playlists...")
+        creationResult = spotifyAccessPrivate.user_playlist_create(
+                currentUserId,
+                "Release Radar",
+                public=False,
+                collaborative=False,
+                description="Automatically generated list of new releases of followed artists.")
+        logging.debug("Created new playlists.")
         releaseRadarPLId = creationResult["id"]
 
     # Determine new tracks and make sure all ids are unique:
-    if debugging:
-        print("Determining unique new track IDs:")
+    logging.debug("Determining unique new track IDs:")
     newUniqueTracks = []
     for (artist, track) in get_new_tracks(spotifyAccessPublic, spotifyAccessPrivate, period):
         if not track.id in map(get_track_id, newUniqueTracks):
@@ -401,30 +379,27 @@ def update_release_radar(clientId, clientSecret, period):
     newUniqueTracks.sort(key=get_track_release_date, reverse=False)
 
     # Add new tracks to playlist:
-    if debugging:
-        print("Replace tracks of playlist...")
+    logging.debug("Replace tracks of playlist...")
     addResult = spotifyAccessPrivate.playlist_replace_items(releaseRadarPLId, map(get_track_id, newUniqueTracks))
     if "snapshot_id" in addResult:
-        print("Successfully added new releases to playlist.")
+        logging.info("Successfully added new releases to playlist.")
     else:
-        print("ERROR: Could not replace tracks of playlist.")
+        logging.error("Could not replace tracks of playlist.")
 
 
 def print_new_albums(clientSecret, clientId, period):
-    print("Printing new albums:")
+    logging.info("Printing new albums:")
 
     periodStart = datetime.datetime.utcnow() - period
     def is_current(album):
         return album.release_date > periodStart
 
-    if debugging:
-        print("Connecting to Spotify...")
+    logging.debug("Connecting to Spotify...")
     accessScopes = ["user-follow-read", "playlist-modify-private", "playlist-read-private"]
     redirectUri = "http://127.0.0.1:9090"
     spotifyAccessPrivate = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=clientId, client_secret=clientSecret, redirect_uri=redirectUri, scope=accessScopes))
     spotifyAccessPublic = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=clientId, client_secret=clientSecret))
-    if debugging:
-        print("Connected to Spotify.")
+    logging.debug("Connected to Spotify.")
 
     for artist in get_followed_artists(spotifyAccessPrivate):
         print(artist.name + ":")
@@ -435,22 +410,20 @@ def print_new_albums(clientSecret, clientId, period):
 
 
 def set_operation(parsed_args, client_id, client_secret, operation):
-    if debugging:
-        print("Connecting to Spotify...")
+    logging.debug("Connecting to Spotify...")
     accessScopes = ["playlist-modify-private", "playlist-read-private"]
     redirectUri = "http://127.0.0.1:9090"
     spotifyAccess = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirectUri,
         scope=accessScopes))
-    if debugging:
-        print("Connected to Spotify.")
+    logging.debug("Connected to Spotify.")
 
     input_sets = []
     for playlist_name in parsed_args.in_playlist:
         playlist = Playlist.by_name(spotifyAccess, playlist_name)
         if playlist == None:
-            print("There is no playlist with name " + playlist_name)
+            logging.error("There is no playlist with name " + playlist_name)
             return
         else:
             input_sets.append(set(playlist.get_tracks(spotifyAccess)))
@@ -503,6 +476,7 @@ def parse_args(args):
             action="store",
             required=False,
             type=int,
+            default=8,
             help="max age of added titles in days")
     
     show_parser = subcmd_parsers.add_parser("show",
@@ -557,8 +531,12 @@ debugging = False
 try:
     parsed = parse_args(sys.argv[1:])
 
-    debugging = parsed.debug
     (clientId, clientSecret) = get_client_creds()
+
+    if parsed.debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
+    else:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     if parsed.command == "update":
         period = datetime.timedelta(days=parsed.days)
@@ -576,7 +554,7 @@ try:
 
 
 except KeyboardInterrupt:
-    print("Ending query early.")
+    logging.warning("Keyboard interrupt: Ending query early.")
     exit()
 
-print("Done.")
+logging.info("Done.")
