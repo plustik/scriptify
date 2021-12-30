@@ -450,6 +450,13 @@ def intersection(spotifyAccess, input_sets):
 
     return result_set
 
+def set_exclusion(spotifyAccess, input_sets):
+    result_set = input_sets[0]
+    for s in input_sets[1:]:
+        result_set = result_set.difference(s)
+
+    return result_set
+
 
 
 ##
@@ -506,6 +513,16 @@ def parse_args(args):
             action="store",
             help="the playlist to save the intersection to")
 
+    exclusion_parser = subcmd_parsers.add_parser("exclusion",
+            help="exclude tracks from playlists from another")
+    exclusion_parser.add_argument("-p", "--in_playlist",
+            action="append",
+            required=True,
+            help="a playlists to take as input")
+    exclusion_parser.add_argument("result",
+            action="store",
+            help="the playlist to save the resulting list of tracks to")
+
 
     return parser.parse_args(args)
 
@@ -551,6 +568,9 @@ try:
 
     elif parsed.command == "intersection":
         set_operation(parsed, clientId, clientSecret, intersection)
+
+    elif parsed.command == "exclusion":
+        set_operation(parsed, clientId, clientSecret, set_exclusion)
 
 
 except KeyboardInterrupt:
