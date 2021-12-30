@@ -330,8 +330,16 @@ def update_release_radar(clientId, clientSecret, period):
     logging.debug("Connecting to Spotify...")
     accessScopes = ["user-follow-read", "playlist-modify-private", "playlist-read-private"]
     redirectUri = "http://127.0.0.1:9090"
-    spotifyAccessPrivate = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=clientId, client_secret=clientSecret, redirect_uri=redirectUri, scope=accessScopes))
-    spotifyAccessPublic = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=clientId, client_secret=clientSecret))
+    spotifyAccessPrivate = spotipy.Spotify(
+            auth_manager=SpotifyOAuth(
+                client_id=clientId,
+                client_secret=clientSecret,
+                redirect_uri=redirectUri,
+                scope=accessScopes))
+    spotifyAccessPublic = spotipy.Spotify(
+            auth_manager=SpotifyClientCredentials(
+                client_id=clientId,
+                client_secret=clientSecret))
     logging.info("Connected to Spotify.")
     
     # Get current user:
@@ -458,6 +466,47 @@ def set_exclusion(spotifyAccess, input_sets):
     return result_set
 
 
+def verify_categorization(client_id, client_secret):
+    logging.info("Verifying categorization...")
+
+    logging.debug("Connecting to Spotify...")
+    accessScopes = ["user-library-read", "playlist-read-private"]
+    redirectUri = "http://127.0.0.1:9090"
+    spotifyAccess = spotipy.Spotify(
+            auth_manager=SpotifyOAuth(
+                client_id=clientId,
+                client_secret=clientSecret,
+                redirect_uri=redirectUri,
+                scope=accessScopes))
+    logging.info("Connected to Spotify.")
+
+    libary_tracks = set(map(
+            lambda item: Track(item["track"]["id"], name=item["track"]["name"]),
+            get_complete_list(
+                lambda offset: spotifyAccess.current_user_saved_tracks(
+                    offset=offset,
+                    limit=MAX_ITEMS))))
+
+    # Get all playlist, that form the categories:
+    categories = filter(
+            lambda item: item["name"].startswith("A - ") 
+                or item["name"].startswith("B - ") 
+                or item["name"].startswith("C - ") 
+                or item["name"].startswith("D - ") 
+                or item["name"].startswith("E - "), 
+            get_complete_list(lambda offset: spotifyAccess.current_user_playlists(offset=offset, limit=MAX_ITEMS)))
+    category_sets = map(lambda pl_item: set(Playlist(pl_item["id"], name=pl_item["name"]).get_tracks(spotifyAccess)), categories)
+    categorized_tracks = union(spotifyAccess, category_sets)
+
+    # Print uncategorized tracks:
+    print("Uncategorized tracks:")
+    for tr in libary_tracks.difference(categorized_tracks):
+        print(tr.name)
+    # Print categorized but unsaved tracks:
+    print("\nCategorized but not saved tracks:")
+    for tr in categorized_tracks.difference(libary_tracks):
+        print(tr.name)
+
 
 ##
 # Functions to handle user input:
@@ -523,6 +572,13 @@ def parse_args(args):
             action="store",
             help="the playlist to save the resulting list of tracks to")
 
+    verify_parser = subcmd_parsers.add_parser("verify",
+            help="verifies a given property of the libary")
+    verify_parser.add_argument("property",
+            action="store",
+            choices=["categorization"],
+            help="the property to check")
+
 
     return parser.parse_args(args)
 
@@ -571,6 +627,10 @@ try:
 
     elif parsed.command == "exclusion":
         set_operation(parsed, clientId, clientSecret, set_exclusion)
+
+    elif parsed.command == "verify":
+        if parsed.property == "categorization":
+            verify_categorization(clientId, clientSecret)
 
 
 except KeyboardInterrupt:
