@@ -470,6 +470,13 @@ def union(spotifyAccess, input_sets):
 
     return union_set
 
+def intersection(spotifyAccess, input_sets):
+    result_set = input_sets[0]
+    for l in input_sets[1:]:
+        result_set = result_set.intersection(l)
+
+    return result_set
+
 
 
 ##
@@ -565,7 +572,7 @@ try:
         set_operation(parsed, clientId, clientSecret, union)
 
     elif parsed.command == "intersection":
-        raise NotImplemented
+        set_operation(parsed, clientId, clientSecret, intersection)
 
 
 except KeyboardInterrupt:
