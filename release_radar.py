@@ -14,13 +14,9 @@ MAX_ITEMS = 50
 MAX_SET_ITEMS = 20
 
 
-class ParsedArgs:
-    def __init__(self):
-        self.debugging = False
-        self.command = None
-        self.targetType = None
-        self.targetName = None
-        self.period = datetime.timedelta(days=8)
+##
+# Classes to model the Spotify libary:
+##
 
 
 class Artist:
@@ -172,18 +168,108 @@ class Album:
 
 
 class Track:
-    def __init__(self, id, name, album, artists):
+    def __init__(self, id, name=None, album=None, artists=None):
         self.id = id
         self.name = name
         self.album = album
         self.artists = artists
 
     def is_done_by_artist(self, artistId):
+        # TODO: self.artist or self.album may be None
         for artist in self.artists:
             if artist.id == artistId:
                 return True
         return False
 
+
+    def __eq__(self, other):
+        return isinstance(other, Track) and self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __str__(self):
+        return "Track {\n\tid: %s,\n\tname: %s\n}" % (self.id, self.name)
+    def __repr__(self):
+        return str(self)
+
+
+class Playlist:
+    def __init__(self, id, name=None, tracks=None):
+        self.id = id
+        self.name = name
+        self.tracks = tracks
+
+
+    def by_name(spotifyAccess, name):
+        playlists = get_complete_list(lambda offset:
+                spotifyAccess.current_user_playlists(offset=offset, limit=MAX_ITEMS))
+
+        for item in playlists:
+            if item["name"] == name:
+                return Playlist(item["id"], name=name)
+
+        return None
+
+
+    def create_playlist(spotifyAccess, name, user_id=None):
+        if user_id == None:
+            # Get current user:
+            if debugging:
+                print("Requesting current user...")
+            user_id = spotifyAccess.current_user()["id"]
+            if debugging:
+                print("Received current user.")
+
+        response = spotifyAccess.user_playlist_create(user_id, name, public=False)
+        return Playlist(response["id"], name, [])
+
+
+    def get_tracks(self, spotifyAccess):
+        if self.tracks == None:
+            self.tracks = []
+            track_items = get_complete_list(
+                    lambda offset: spotifyAccess.playlist_items(self.id,
+                        limit=MAX_ITEMS,
+                        offset=offset,
+                        fields="total,items(track.id)"))
+            for item in track_items:
+                self.tracks.append(Track(item["track"]["id"]))
+
+        return self.tracks
+
+    
+    def update_tracks(self, spotifyAccess, tracks):
+        self.tracks = tracks
+        spotifyAccess.playlist_replace_items(self.id, map(lambda tr: tr.id, tracks))
+
+
+    def __str__(self):
+        return "Playlist {\n\tid: %s,\n\tname: %s\n}" % (self.id, self.name)
+    def __repr__(self):
+        return str(self)
+
+
+##
+# Functions to handle functions on the libary:
+##
+
+
+def get_complete_list(get_page):
+    res = []
+    offset = 0
+
+    page = get_page(offset)
+    res.extend(page["items"])
+    offset += len(page["items"])
+
+    list_length = page["total"]
+    while offset < list_length:
+        page = get_page(offset)
+        res.extend(page["items"])
+        offset += len(page["items"])
+
+    return res
 
 
 def get_followed_artists(spotifyAccess):
@@ -242,6 +328,11 @@ def get_new_tracks(spotifyAccessPublic, spotifyAccessPrivate, period):
                         #print(artist.id + " - " + track.album.id + ": " + track.id)
                         res.append((artist, track))
     return res
+
+
+##
+# Implementations of the main commands:
+##
 
 
 def update_release_radar(clientId, clientSecret, period):
@@ -343,6 +434,49 @@ def print_new_albums(clientSecret, clientId, period):
         print()
 
 
+def set_operation(parsed_args, client_id, client_secret, operation):
+    if debugging:
+        print("Connecting to Spotify...")
+    accessScopes = ["playlist-modify-private", "playlist-read-private"]
+    redirectUri = "http://127.0.0.1:9090"
+    spotifyAccess = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirectUri,
+        scope=accessScopes))
+    if debugging:
+        print("Connected to Spotify.")
+
+    input_sets = []
+    for playlist_name in parsed_args.in_playlist:
+        playlist = Playlist.by_name(spotifyAccess, playlist_name)
+        if playlist == None:
+            print("There is no playlist with name " + playlist_name)
+            return
+        else:
+            input_sets.append(set(playlist.get_tracks(spotifyAccess)))
+
+    target_playlist = Playlist.by_name(spotifyAccess, parsed_args.result)
+    if target_playlist == None:
+        target_playlist = Playlist.create_playlist(spotifyAccess, parsed_args.result)
+
+    resulting_set = operation(spotifyAccess, input_sets)
+    target_playlist.update_tracks(spotifyAccess, resulting_set)
+
+
+def union(spotifyAccess, input_sets):
+    union_set = set()
+    for l in input_sets:
+        union_set = union_set.union(l)
+
+    return union_set
+
+
+
+##
+# Functions to handle user input:
+##
+
+
 def parse_args(args):
     parser = argparse.ArgumentParser(
             description="Advanced libary handling for spotify.")
@@ -422,13 +556,16 @@ try:
     if parsed.command == "update":
         period = datetime.timedelta(days=parsed.days)
         update_release_radar(clientId, clientSecret, period=period)
+
     elif parsed.command == "show":
         period = datetime.timedelta(days=parsed.days)
         print_new_albums(clientId, clientSecret, period=period)
+
     elif parsed.command == "union":
-        print("Not implemented")
+        set_operation(parsed, clientId, clientSecret, union)
+
     elif parsed.command == "intersection":
-        print("Not implemented")
+        raise NotImplemented
 
 
 except KeyboardInterrupt:
