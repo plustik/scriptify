@@ -39,7 +39,11 @@ class Artist:
 
         while i < totalAlbums or totalAlbums < 0:
             logging.debug("Requesting page of albums of artist \"" + self.name + "\"...")
-            results = spotify.artist_albums(artist_id=self.id, limit = MAX_ITEMS, offset=offset)
+            try:
+                results = spotify.artist_albums(artist_id=self.id, limit = MAX_ITEMS, offset=offset)
+            except spotipy.exceptions.SpotifyException:
+                logging.warning("Requesting artists albums raised exception.")
+                continue
             logging.debug("Received page of albums.")
 
             offset = offset + len(results["items"])
@@ -66,10 +70,12 @@ class Artist:
         else:
             self.get_albums(spotify)
 
+        logging.info(f"Downloading albums with tracks for artist \"{self.name}\"...")
+
         completeAlbumIdList = []
         for alb in self.albums:
             completeAlbumIdList.append(alb.id)
-        
+
         resAlbumsList = []
 
         totalAlbums = len(completeAlbumIdList)
@@ -78,8 +84,13 @@ class Artist:
 
         while i < totalAlbums:
             logging.debug("Requesting page of complete albums of artist \"" + self.name + "\"...")
-            results = spotify.albums(completeAlbumIdList[offset:(offset+MAX_SET_ITEMS)])
+            try:
+                results = spotify.albums(completeAlbumIdList[offset:(offset+MAX_SET_ITEMS)])
+            except spotipy.exceptions.SpotifyException:
+                logging.warning("Requesting albums raised exception.")
+                continue
             logging.debug("Received page of complete albums.")
+
             offset += MAX_SET_ITEMS
 
             for item in results["albums"]:
@@ -97,11 +108,13 @@ class Artist:
                     for art in tr["artists"]:
                         trArtists.append(Artist(art["id"], art["name"]))
                     album.tracks.append(Track(tr["id"], tr["name"], album, trArtists))
-                    
+
                 resAlbumsList.append(album)
                 i += 1
 
         self.albums = resAlbumsList
+
+        logging.info(f"Downloaded albums with tracks for artist \"{self.name}\".")
         return resAlbumsList
 
 
@@ -226,7 +239,7 @@ class Playlist:
 
         return self.tracks
 
-    
+
     def update_tracks(self, spotifyAccess, tracks):
         self.tracks = tracks
         spotifyAccess.playlist_replace_items(self.id, map(lambda tr: tr.id, tracks))
@@ -261,6 +274,8 @@ def get_complete_list(get_page):
 
 
 def get_followed_artists(spotifyAccess):
+    logging.debug("Downloading list of followed artists...")
+
     totalFollowed = -1
     lastId = None
     i = 0
@@ -286,6 +301,7 @@ def get_followed_artists(spotifyAccess):
             res.append(artist)
             i += 1
 
+    logging.debug("Downloaded list of followed artists.")
     return res
 
 
@@ -341,7 +357,7 @@ def update_release_radar(clientId, clientSecret, period):
                 client_id=clientId,
                 client_secret=clientSecret))
     logging.info("Connected to Spotify.")
-    
+
     # Get current user:
     logging.debug("Requesting current user...")
     currentUserId = spotifyAccessPrivate.current_user()["id"]
