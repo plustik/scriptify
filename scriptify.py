@@ -5,6 +5,7 @@ import datetime
 import getpass
 import logging
 import os
+import requests
 import sys
 import spotipy
 
@@ -404,7 +405,15 @@ def update_release_radar(clientId, clientSecret, period):
 
     # Add new tracks to playlist:
     logging.debug("Replace tracks of playlist...")
-    addResult = spotifyAccessPrivate.playlist_replace_items(releaseRadarPLId, map(get_track_id, newUniqueTracks))
+    replaced = False
+    while not replaced:
+        try:
+            addResult = spotifyAccessPrivate.playlist_replace_items(releaseRadarPLId, map(get_track_id, newUniqueTracks))
+            replaced = True
+        except requests.exceptions.ConnectionError as err:
+            print("Error while replacing items in playlist:", err)
+            print("Retrying...")
+
     if "snapshot_id" in addResult:
         logging.info("Successfully added new releases to playlist.")
     else:
@@ -505,11 +514,11 @@ def verify_categorization(client_id, client_secret):
 
     # Get all playlist, that form the categories:
     categories = filter(
-            lambda item: item["name"].startswith("A - ") 
-                or item["name"].startswith("B - ") 
-                or item["name"].startswith("C - ") 
-                or item["name"].startswith("D - ") 
-                or item["name"].startswith("E - "), 
+            lambda item: item["name"].startswith("A - ")
+                or item["name"].startswith("B - ")
+                or item["name"].startswith("C - ")
+                or item["name"].startswith("D - ")
+                or item["name"].startswith("E - "),
             get_complete_list(lambda offset: spotifyAccess.current_user_playlists(offset=offset, limit=MAX_ITEMS)))
     category_sets = map(lambda pl_item: set(Playlist(pl_item["id"], name=pl_item["name"]).get_tracks(spotifyAccess)), categories)
     categorized_tracks = union(spotifyAccess, category_sets)
@@ -550,7 +559,7 @@ def parse_args(args):
             type=int,
             default=8,
             help="max age of added titles in days")
-    
+
     show_parser = subcmd_parsers.add_parser("show",
             help="display possible updates for playlists")
     show_parser.add_argument("target",
