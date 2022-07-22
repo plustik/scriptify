@@ -242,8 +242,57 @@ class Playlist:
 
 
     def update_tracks(self, spotifyAccess, tracks):
-        self.tracks = tracks
-        spotifyAccess.playlist_replace_items(self.id, map(lambda tr: tr.id, tracks))
+        offset = 0
+        length = min(len(tracks), 50)
+
+        replaced = False
+        while not replaced:
+            try:
+                track_slice = tracks[offset:(offset + length)]
+                addResult = spotifyAccess.playlist_replace_items(self.id, map(lambda tr: tr.id, track_slice))
+                replaced = True
+            except requests.exceptions.ConnectionError as err:
+                print("Error while replacing items in playlist:", err)
+                print("Retrying...")
+            except requests.exceptions.HTTPError as err:
+                print("Error while replacing items in playlist:", err)
+                print("Retrying...")
+
+        if not "snapshot_id" in addResult:
+            logging.error("Could not replace tracks of playlist.")
+            return False
+
+        offset += 50
+
+        while offset < len(tracks):
+            length = min(len(tracks) - offset, 50)
+
+            added = False
+            while not added:
+                try:
+                    track_slice = tracks[offset:(offset + length)]
+                    addResult = spotifyAccess.playlist_add_items(self.id, map(lambda tr: tr.id, track_slice))
+                    added = True
+                except requests.exceptions.ConnectionError as err:
+                    print("Error while adding items to playlist:", err)
+                    print("Retrying...")
+                except requests.exceptions.HTTPError as err:
+                    print("Error while adding items to playlist:", err)
+                    print("Retrying...")
+
+            if not "snapshot_id" in addResult:
+                logging.error("Could add new tracks to playlist.")
+                return False
+
+            offset += 50
+
+        if "snapshot_id" in addResult:
+            self.tracks = tracks
+            logging.info("Successfully added new releases to playlist.")
+            return True
+        else:
+            logging.error("Could not replace tracks of playlist.")
+            return False
 
 
     def __str__(self):
@@ -403,21 +452,11 @@ def update_release_radar(clientId, clientSecret, period):
     # Sort tracks by release date:
     newUniqueTracks.sort(key=get_track_release_date, reverse=False)
 
-    # Add new tracks to playlist:
     logging.debug("Replace tracks of playlist...")
-    replaced = False
-    while not replaced:
-        try:
-            addResult = spotifyAccessPrivate.playlist_replace_items(releaseRadarPLId, map(get_track_id, newUniqueTracks))
-            replaced = True
-        except requests.exceptions.ConnectionError as err:
-            print("Error while replacing items in playlist:", err)
-            print("Retrying...")
+    rrplaylist = Playlist(releaseRadarPLId)
+    if not rrplaylist.update_tracks(spotifyAccess=spotifyAccessPrivate, tracks=newUniqueTracks):
+        print("Could not update playlist.")
 
-    if "snapshot_id" in addResult:
-        logging.info("Successfully added new releases to playlist.")
-    else:
-        logging.error("Could not replace tracks of playlist.")
 
 
 def print_new_albums(clientSecret, clientId, period):
